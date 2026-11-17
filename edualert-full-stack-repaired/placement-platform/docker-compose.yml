@@ -1,0 +1,43 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in a .env file next to docker-compose.yml}
+      POSTGRES_DB: placement
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d placement']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # Not published to the host by default. Uncomment for local tools:
+    # ports: ['127.0.0.1:5432:5432']
+
+  backend:
+    build: ./backend
+    env_file:
+      - ./backend/.env
+    environment:
+      # Inside the compose network the database host is "db" (NOT localhost); overrides backend/.env.
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/placement
+      TRUST_PROXY: 'true'
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - '4000:4000'
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ''   # same-origin: nginx proxies /api to the backend, so no CORS is involved
+    depends_on:
+      - backend
+    ports:
+      - '3000:80'
+
+volumes:
+  pgdata:
